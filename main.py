@@ -79,6 +79,13 @@ st.altair_chart(alt_chart, width="stretch")
 # --------------------------------------------------
 st.header("3️⃣ Highcharts (streamlit-highcharts)")
 
+# converter datas para ms e preços para lista
+timestamps_ms = (df["Date"].astype("int64") // 10**6).tolist()
+prices = df["Price"].tolist()
+
+# pares [timestamp_ms, price] — JSON serializável e mantêm ordem cronológica
+series_data = [[int(t), float(p)] for t, p in zip(timestamps_ms, prices)]
+
 highcharts_options = {
     "chart": {
         "type": "line",
@@ -113,7 +120,7 @@ highcharts_options = {
     "series": [
         {
             "name": "Preço",
-            "data": df.apply(lambda row: [int(row["Date"].timestamp() * 1000), row["Price"]], axis=1).tolist(),
+            "data": series_data,
             "step": "left",
             "color": "#66CCFF"  # pode ser qualquer cor que combine com fundo escuro
         }
