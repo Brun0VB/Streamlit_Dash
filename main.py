@@ -3,7 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import altair as alt
-from streamlit_highcharts import streamlit_highcharts as st_hc  # importando a função certa
+import numpy as np
+from streamlit_highcharts import streamlit_highcharts as st_hc  
 
 
 # ----------------------------
@@ -31,101 +32,100 @@ df = df.sort_values("Date")
 dates_list = df["Date"]
 prices_list = df["Price"]
 
-st.title("Comparativo de Gráficos — Matplotlib / Altair / Highcharts")
-st.write("Dados: Histórico de preços – Horizon Forbidden West")
 
-# --------------------------------------------------
-# 1️⃣ Matplotlib
-# --------------------------------------------------
-st.header("1️⃣ Matplotlib")
+# colocar tudo em uma única tab chamada "Gráficos"
+tabs = st.tabs(["Gráficos"])
+with tabs[0]:
 
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.step(df["Date"], df["Price"], where="post", linewidth=2)
-ax.plot(df["Date"], df["Price"], "o")
-ax.set_ylim(100, 300)
-ax.set_ylabel("Preço (R$)")
-ax.xaxis.set_major_formatter(mdates.DateFormatter("%d/%b/%Y"))
-ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-# Cor dos textos
-ax.tick_params(colors="white")            # ticks
-ax.xaxis.label.set_color("white")         # label eixo X
-ax.yaxis.label.set_color("white")         # label eixo Y
-ax.title.set_color("white")               # título
-fig.patch.set_alpha(0)        # Remove fundo da figura
-plt.xticks(rotation=90)
-plt.tight_layout()
+    st.title("Comparativo de Gráficos — Matplotlib / Altair / Highcharts")
+    st.write("Dados: Histórico de preços – Horizon Forbidden West")
 
-st.pyplot(fig, transparent=True)
+    # --------------------------------------------------
+    # 1️⃣ Matplotlib
+    # --------------------------------------------------
+    st.header("1️⃣ Matplotlib")
 
-# --------------------------------------------------
-# 2️⃣ Altair
-# --------------------------------------------------
-st.header("2️⃣ Altair")
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.step(df["Date"], df["Price"], where="post", linewidth=2)
+    ax.plot(df["Date"], df["Price"], "o")
+    ax.set_ylim(100, 300)
+    ax.set_ylabel("Preço (R$)")
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d/%b/%Y"))
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    # Cor dos textos
+    ax.tick_params(colors="white")            # ticks
+    ax.xaxis.label.set_color("white")         # label eixo X
+    ax.yaxis.label.set_color("white")         # label eixo Y
+    ax.title.set_color("white")               # título
+    fig.patch.set_alpha(0)        # Remove fundo da figura
+    plt.xticks(rotation=90)
+    plt.tight_layout()
 
-alt_chart = (
-    alt.Chart(df)
-    .mark_line(interpolate="step-after", point=True)
-    .encode(
-        x=alt.X("Date:T", axis=alt.Axis(format="%d/%b/%Y", labelAngle=-90)),
-        y=alt.Y("Price:Q", scale=alt.Scale(domain=[100, 300])),
+    st.pyplot(fig, transparent=True)
+
+    # --------------------------------------------------
+    # 2️⃣ Altair
+    # --------------------------------------------------
+    st.header("2️⃣ Altair")
+
+    alt_chart = (
+        alt.Chart(df)
+        .mark_line(interpolate="step-after", point=True)
+        .encode(
+            x=alt.X("Date:T", axis=alt.Axis(format="%b/%Y", labelAngle=-90, tickCount={"interval": "month", "step": 3})),
+            y=alt.Y("Price:Q", scale=alt.Scale(domain=[100, 300])),
+        )
+        .properties(height=300)
     )
-    .properties(height=300)
-)
 
-st.altair_chart(alt_chart, width="stretch")
+    st.altair_chart(alt_chart, width="stretch")
 
-# --------------------------------------------------
-# 3️⃣ Highcharts (streamlit-highcharts)
-# --------------------------------------------------
-st.header("3️⃣ Highcharts (streamlit-highcharts)")
+    # --------------------------------------------------
+    # 3️⃣ Highcharts (streamlit-highcharts)
+    # --------------------------------------------------
+    st.header("3️⃣ Highcharts (streamlit-highcharts)")
 
-# converter datas para ms e preços para lista
-timestamps_ms = (df["Date"].astype("int64") // 10**6).tolist()
-prices = df["Price"].tolist()
+    # converter datas para ms e preços para lista
+    timestamps_ms = (df["Date"].astype("int64") // 10**6).tolist()
+    prices = df["Price"].tolist()
 
-# pares [timestamp_ms, price] — JSON serializável e mantêm ordem cronológica
-series_data = [[int(t), float(p)] for t, p in zip(timestamps_ms, prices)]
+    # pares [timestamp_ms, price] — JSON serializável e mantêm ordem cronológica
+    series_data = [[int(t), float(p)] for t, p in zip(timestamps_ms, prices)]
 
-highcharts_options = {
-    "chart": {
-        "type": "line",
-        "backgroundColor": "rgba(0,0,0,0)",
-        "plotBackgroundColor": "rgba(0,0,0,0)",
-    },
+    highcharts_options = {
+        "chart": {
+            "type": "line",
+            "backgroundColor": "rgba(0,0,0,0)",
+            "plotBackgroundColor": "rgba(0,0,0,0)",
+        },
+        "title": {
+            "text": "Histórico de Preços",
+            "style": {"color": "#FFFFFF"}
+        },
+        "xAxis": {
+            "type": "datetime",
+            "labels": {"rotation": -90, "style": {"color": "#FFFFFF"}, "format": "{value:%d/%b/%Y %H:%M}"},
+            "title": {"style": {"color": "#FFFFFF"}},
+            "lineColor": "#FFFFFF",
+            "tickColor": "#FFFFFF",
+        },
+        "yAxis": {
+            "title": {"text": "Preço (R$)", "style": {"color": "#FFFFFF"}},
+            "labels": {"style": {"color": "#FFFFFF"}},
+            "gridLineColor": "rgba(255,255,255,0.2)",
+            "lineColor": "#FFFFFF",
+        },
+        "legend": {
+            "itemStyle": {"color": "#FFFFFF"}
+        },
+        "series": [
+            {
+                "name": "Preço",
+                "data": series_data,
+                "step": "left",
+                "color": "#66CCFF"
+            }
+        ]
+    }
 
-    "title": {
-        "text": "Histórico de Preços",
-        "style": {"color": "#FFFFFF"}   # branco
-    },
-
-    "xAxis": {
-        "type": "datetime",
-        "labels": {"rotation": -90, "style": {"color": "#FFFFFF"}, "format": "{value:%d/%b/%Y %H:%M}"},
-        "title": {"style": {"color": "#FFFFFF"}},
-        "lineColor": "#FFFFFF",
-        "tickColor": "#FFFFFF",
-    },
-
-    "yAxis": {
-        "title": {"text": "Preço (R$)", "style": {"color": "#FFFFFF"}},
-        "labels": {"style": {"color": "#FFFFFF"}},
-        "gridLineColor": "rgba(255,255,255,0.2)",
-        "lineColor": "#FFFFFF",
-    },
-
-    "legend": {
-        "itemStyle": {"color": "#FFFFFF"}
-    },
-
-    "series": [
-        {
-            "name": "Preço",
-            "data": series_data,
-            "step": "left",
-            "color": "#66CCFF"  # pode ser qualquer cor que combine com fundo escuro
-        }
-    ]
-}
-
-
-st_hc(highcharts_options)
+    st_hc(highcharts_options)
