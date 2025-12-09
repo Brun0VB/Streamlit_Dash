@@ -7,49 +7,12 @@ from pathlib import Path
 from datetime import datetime
 import pandas as pd
 import altair as alt
-from data import get_wishlist_history, get_latest_wishlist, delete_wishlist_by_fetch_date
+from data import get_wishlist_history, get_latest_wishlist, delete_wishlist_by_fetch_date, save_wishlist_to_db
 
 
 load_dotenv()
 STEAMID=os.getenv("STEAMID")
 WEBAPIKEY=os.getenv("WEBAPIKEY")
-
-WISHLIST_DB_PATH = Path(__file__).parent / "wishlist.db"
-
-def init_wishlist_database():
-    """Initialize SQLite database for wishlist data"""
-    conn = sqlite3.connect(WISHLIST_DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS wishlist (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            appid INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            price REAL,
-            currency TEXT,
-            fetch_date TEXT NOT NULL
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-
-def save_wishlist_to_db(wishlist_data):
-    """Save wishlist data to SQLite database"""
-    init_wishlist_database()
-    conn = sqlite3.connect(WISHLIST_DB_PATH)
-    cursor = conn.cursor()
-    fetch_date = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    
-    for item in wishlist_data:
-        cursor.execute('''
-            INSERT INTO wishlist (appid, name, price, currency, fetch_date)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (item["appid"], item["name"], item.get("price"), item.get("currency"), fetch_date))
-    
-    conn.commit()
-    conn.close()
 
 def getSteamWishList():
     st.write("Esta é a seção SteamData onde você pode gerenciar sua lista de espera do Steam.")     
