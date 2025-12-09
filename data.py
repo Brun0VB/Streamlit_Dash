@@ -135,3 +135,15 @@ def get_wishlist_history():
         return df
     except:
         return None
+
+def delete_wishlist_by_fetch_date(fetch_date):
+    """Delete all wishlist records for a specific fetch_date"""
+    try:
+        conn = sqlite3.connect(WISHLIST_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM wishlist WHERE fetch_date = ?', (fetch_date,))
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        return False

@@ -6,6 +6,9 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
+import altair as alt
+from data import get_wishlist_history, get_latest_wishlist, delete_wishlist_by_fetch_date
+
 
 load_dotenv()
 STEAMID=os.getenv("STEAMID")
@@ -50,7 +53,14 @@ def save_wishlist_to_db(wishlist_data):
 
 def getSteamWishList():
     st.write("Esta é a seção SteamData onde você pode gerenciar sua lista de espera do Steam.")     
-    
+
+    latest = get_latest_wishlist()
+    if latest:
+        st.subheader("Última WishList salva")
+        st.write(f"**Data da busca:** {latest['fetch_date']}")
+    else:
+        st.info("📭 Nenhuma wishlist salva encontrada no banco de dados.")
+
     if st.button("🔄 Buscar WishList", key="fetch_wishlist"):
         wishlist = requests.get(f"https://api.steampowered.com/IWishlistService/GetWishlist/v1/?key={WEBAPIKEY}&steamid={STEAMID}").json()["response"]["items"]
         appids = [item["appid"] for item in wishlist]
@@ -67,12 +77,8 @@ def getSteamWishList():
         # Save to database
         save_wishlist_to_db(appData)
         st.success(f"✅ WishList atualizada com {len(appData)} jogos!")
-        
-        # Display data
-        st.subheader("Dados da WishList:")
-        for item in appData:
-            price_str = f"R$ {item['price']:.2f}" if item['price'] else "Gratuito/Não disponível"
-            st.write(f"**{item['name']}** - {price_str}")
+
+    plot_wishlist_altair()
 
 def getAppDetails(appid):
     """Fetch app details including name and price"""
@@ -104,9 +110,80 @@ def getAppDetails(appid):
         "currency": None
     }
 
+
+def plot_wishlist_altair():
+    """Module-level: build and render Altair chart for wishlist price history"""
+
+    df = get_wishlist_history()
+    if df is None or df.empty:
+        st.info("📉 Nenhum histórico de preços disponível para os jogos da wishlist.")
+        return
+
+    # Parse fetch_date into datetime (try exact format first)
+    try:
+        df['fetch_date_dt'] = pd.to_datetime(df['fetch_date'], format='%d/%m/%Y %H:%M:%S')
+    except Exception:
+        df['fetch_date_dt'] = pd.to_datetime(df['fetch_date'], errors='coerce')
+
+    # Get unique game names sorted
+    game_names = sorted(df['name'].unique())
+    
+    if not game_names:
+        st.info("📉 Nenhum preço disponível para plotagem na wishlist.")
+        return
+    
+    # Add selectbox for user to choose a game
+    st.subheader('📈 Histórico de Preços (WishList)')
+    selected_game = st.selectbox("Selecione um jogo para visualizar:", game_names, key="wishlist_game_select")
+    
+    # Filter data for selected game
+    game_data = df[df['name'] == selected_game].copy()
+    game_data = game_data.dropna(subset=['price', 'fetch_date_dt'])
+    
+    if game_data.empty:
+        st.warning(f"⚠️ Nenhum preço disponível para {selected_game}.")
+        return
+    
+    # Sort by date
+    game_data = game_data.sort_values('fetch_date_dt')
+
+    # Create a nearest selection for hover interaction (like Highcharts)
+    nearest = alt.selection_point(nearest=True, on='mouseover', fields=['fetch_date_dt'], empty='none')
+
+    # Build Altair chart with interactive hover
+    line = (
+        alt.Chart(game_data)
+        .mark_line(interpolate='step-after', point=True, color='#66CCFF')
+        .encode(
+            x=alt.X('fetch_date_dt:T', axis=alt.Axis(format='%d/%b/%Y', labelAngle=-90, title='Data', tickCount={'interval': 'day', 'step': 1})),
+            y=alt.Y('price:Q', scale=alt.Scale(), title='Preço (R$)'),
+        )
+    )
+
+    # Points that appear on hover
+    points = (
+        alt.Chart(game_data)
+        .mark_circle(color="#8766FF", size=100)
+        .encode(
+            x='fetch_date_dt:T',
+            y='price:Q',
+            opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+        )
+        .add_params(nearest)
+    )
+
+    # Combine all layers
+    chart = (
+        (line + points)
+        .properties(height=400, width=900, title=f'Histórico de Preços — {selected_game}')
+        .configure_axis(labelColor='white', titleColor='white')
+        .configure_title(color='white')
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
 def viewWishlistDatabase():
     """View wishlist data from database"""
-    from data import get_latest_wishlist, get_wishlist_history
     
     st.subheader("📊 Dados Salvos da WishList")
     
@@ -149,6 +226,21 @@ def viewWishlistDatabase():
                 'price': lambda x: x[x.notna()].sum()
             }).rename(columns={'appid': 'Quantidade', 'price': 'Valor Total'})
             st.dataframe(summary, use_container_width=True)
+            
+            # Delete options by fetch_date
+            st.subheader("🗑️ Deletar Dados por Data")
+            unique_dates = sorted(df_history['fetch_date'].unique(), reverse=True)
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                selected_date = st.selectbox("Selecione uma data para deletar:", unique_dates, key="delete_date_select")
+            with col2:
+                if st.button("🗑️ Deletar", key="delete_wishlist_btn"):
+                    if delete_wishlist_by_fetch_date(selected_date):
+                        st.success(f"✅ Dados de {selected_date} deletados com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Erro ao deletar dados.")
         else:
             st.info("📭 Nenhum histórico disponível.")
 
