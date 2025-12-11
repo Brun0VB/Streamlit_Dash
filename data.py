@@ -172,7 +172,7 @@ def save_wishlist_to_db(wishlist_data):
     cursor = conn.cursor()
     
     # Data única para todo este fetch
-    fetch_date = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    fetch_date = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
     
     for item in wishlist_data:
         try:
