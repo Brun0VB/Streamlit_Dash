@@ -8,11 +8,13 @@ from datetime import datetime
 import pandas as pd
 import altair as alt
 from data import get_wishlist_history, get_latest_wishlist, delete_wishlist_by_fetch_date, save_wishlist_to_db
+from itad_integration import fetch_all_wishlist_history, fetch_price_history_for_game, ITADClient, get_price_stats_for_game
 
 
 load_dotenv()
 STEAMID=os.getenv("STEAMID")
 WEBAPIKEY=os.getenv("WEBAPIKEY")
+ITAD_API_KEY=os.getenv("ITAD_API_KEY")
 
 def getSteamWishList():
     st.write("Esta é a seção SteamData onde você pode gerenciar sua lista de espera do Steam.")     
@@ -24,23 +26,111 @@ def getSteamWishList():
     else:
         st.info("📭 Nenhuma wishlist salva encontrada no banco de dados.")
 
-    if st.button("🔄 Buscar WishList", key="fetch_wishlist"):
-        wishlist = requests.get(f"https://api.steampowered.com/IWishlistService/GetWishlist/v1/?key={WEBAPIKEY}&steamid={STEAMID}").json()["response"]["items"]
-        appids = [item["appid"] for item in wishlist]
-        appData = []
+    # Área de botões principais
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🔄 Buscar WishList", key="fetch_wishlist"):
+            wishlist = requests.get(f"https://api.steampowered.com/IWishlistService/GetWishlist/v1/?key={WEBAPIKEY}&steamid={STEAMID}").json()["response"]["items"]
+            appids = [item["appid"] for item in wishlist]
+            appData = []
 
-        total = len(appids)
-        progress = st.progress(0)
-        with st.spinner("Buscando nomes e preços na wishlist..."):
-            for i, appid in enumerate(appids, start=1):
-                app_info = getAppDetails(appid)
-                appData.append(app_info)
-                progress.progress(int(i * 100 / total))
+            total = len(appids)
+            progress = st.progress(0)
+            with st.spinner("Buscando nomes e preços na wishlist..."):
+                for i, appid in enumerate(appids, start=1):
+                    app_info = getAppDetails(appid)
+                    appData.append(app_info)
+                    progress.progress(int(i * 100 / total))
 
-        # Save to database
-        save_wishlist_to_db(appData)
-        st.success(f"✅ WishList atualizada com {len(appData)} jogos!")
+            # Save to database
+            save_wishlist_to_db(appData)
+            st.success(f"✅ WishList atualizada com {len(appData)} jogos!")
+            st.rerun()
+    
+    with col2:
+        # Botão para buscar histórico de TODOS os jogos
+        if st.button("📊 Buscar Histórico Completo (ITAD)", key="fetch_all_history", 
+                     disabled=not ITAD_API_KEY or not latest):
+            if not ITAD_API_KEY:
+                st.error("❌ Configure ITAD_API_KEY no arquivo .env")
+            elif not latest:
+                st.warning("⚠️ Busque a wishlist primeiro!")
+            else:
+                st.info("🔍 Buscando histórico de preços para todos os jogos...")
+                
+                # Container para exibir progresso
+                progress_container = st.empty()
+                status_container = st.empty()
+                
+                def progress_callback(current, total, result):
+                    progress_container.progress(current / total)
+                    status_container.text(f"Processando {current}/{total}: {result['message']}")
+                
+                # Buscar histórico
+                result = fetch_all_wishlist_history(
+                    latest['items'], 
+                    progress_callback=progress_callback,
+                    months=24
+                )
+                
+                if result['success']:
+                    st.success(f"✅ {result['message']}")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {result['message']}")
 
+    # Separador
+    st.divider()
+
+    # Seção para buscar histórico de jogo individual
+    if latest and ITAD_API_KEY:
+        st.subheader("🎯 Buscar Histórico Individual")
+        
+        # Criar lista de jogos para seleção
+        game_options = {f"{item[1]} (ID: {item[0]})": (item[0], item[1]) 
+                       for item in latest['items']}
+        
+        col_select, col_button = st.columns([3, 1])
+        
+        with col_select:
+            selected_game = st.selectbox(
+                "Selecione um jogo:",
+                options=list(game_options.keys()),
+                key="individual_game_select"
+            )
+        
+        with col_button:
+            st.write("")  # Spacer
+            st.write("")  # Spacer
+            if st.button("🔍 Buscar", key="fetch_individual"):
+                appid, game_name = game_options[selected_game]
+                
+                with st.spinner(f"Buscando histórico de '{game_name}'..."):
+                    client = ITADClient(ITAD_API_KEY)
+                    result = fetch_price_history_for_game(appid, game_name, client, months=24)
+                    
+                    if result['success']:
+                        st.success(result['message'])
+                        
+                        # Mostrar estatísticas
+                        stats = get_price_stats_for_game(appid)
+                        if stats:
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric("Menor Preço", f"R$ {stats['min_price']:.2f}")
+                            with col2:
+                                st.metric("Maior Preço", f"R$ {stats['max_price']:.2f}")
+                            with col3:
+                                st.metric("Preço Médio", f"R$ {stats['avg_price']:.2f}")
+                            with col4:
+                                st.metric("Mudanças", stats['num_changes'])
+                        
+                        st.rerun()
+                    else:
+                        st.error(result['message'])
+
+    st.divider()
     plot_wishlist_altair()
 
 def getAppDetails(appid):
@@ -81,12 +171,8 @@ def plot_wishlist_altair():
     if df is None or df.empty:
         st.info("📉 Nenhum histórico de preços disponível para os jogos da wishlist.")
         return
-
-    # Parse fetch_date into datetime (try exact format first)
-    try:
-        df['fetch_date_dt'] = pd.to_datetime(df['fetch_date'], format='%d/%m/%Y %H:%M:%S')
-    except Exception:
-        df['fetch_date_dt'] = pd.to_datetime(df['fetch_date'], errors='coerce')
+    
+    df['fetch_date_dt'] = pd.to_datetime(df['fetch_date'], utc=True, errors='coerce')
 
     # Get unique game names sorted
     game_names = sorted(df['name'].unique())
@@ -107,8 +193,7 @@ def plot_wishlist_altair():
         st.warning(f"⚠️ Nenhum preço disponível para {selected_game}.")
         return
     
-    # Sort by date
-    game_data = game_data.sort_values('fetch_date_dt')
+    game_data['fetch_date_dt'] = pd.to_datetime(game_data['fetch_date_dt'], errors='coerce')
 
     # Create a nearest selection for hover interaction (like Highcharts)
     nearest = alt.selection_point(nearest=True, on='mouseover', fields=['fetch_date_dt'], empty='none')
@@ -143,16 +228,19 @@ def plot_wishlist_altair():
         .configure_title(color='white')
     )
 
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width='stretch')
 
 def viewWishlistDatabase():
     """View wishlist data from database"""
     
     st.subheader("📊 Dados Salvos da WishList")
     
-    # Tabs for different views
-    tab1, tab2 = st.tabs(["Última Busca", "Histórico Completo"])
-    
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Última Busca", 
+        "Histórico Completo", 
+        "Tabela: wishlist_games", 
+        "Tabela: price_history"
+    ])    
     with tab1:
         latest = get_latest_wishlist()
         if latest:
@@ -161,7 +249,7 @@ def viewWishlistDatabase():
             
             # Create a nice dataframe
             df_latest = __create_wishlist_df(latest['items'])
-            st.dataframe(df_latest, use_container_width=True)
+            st.dataframe(df_latest, width='stretch')
             
             # Show summary stats
             col1, col2, col3 = st.columns(3)
@@ -180,7 +268,7 @@ def viewWishlistDatabase():
         df_history = get_wishlist_history()
         if df_history is not None and len(df_history) > 0:
             st.write(f"**Total de registros:** {len(df_history)}")
-            st.dataframe(df_history, use_container_width=True)
+            st.dataframe(df_history, width='stretch')
             
             # Summary by fetch date
             st.subheader("Resumo por Data")
@@ -188,7 +276,7 @@ def viewWishlistDatabase():
                 'appid': 'count',
                 'price': lambda x: x[x.notna()].sum()
             }).rename(columns={'appid': 'Quantidade', 'price': 'Valor Total'})
-            st.dataframe(summary, use_container_width=True)
+            st.dataframe(summary, width='stretch')
             
             # Delete options by fetch_date
             st.subheader("🗑️ Deletar Dados por Data")
@@ -206,6 +294,36 @@ def viewWishlistDatabase():
                         st.error("❌ Erro ao deletar dados.")
         else:
             st.info("📭 Nenhum histórico disponível.")
+
+     # ---- TAB 3: RAW wishlist_games ----
+    with tab3:
+        st.subheader("📂 Tabela crua: wishlist_games")
+
+        import sqlite3
+        from data import WISHLIST_DB_PATH  # Ajuste se necessário
+
+        try:
+            conn = sqlite3.connect(WISHLIST_DB_PATH)
+            df_games_raw = pd.read_sql_query("SELECT * FROM wishlist_games", conn)
+            conn.close()
+            st.dataframe(df_games_raw, width='stretch')
+        except Exception as e:
+            st.error(f"Erro ao carregar tabela wishlist_games: {e}")
+
+    # ---- TAB 4: RAW price_history ----
+    with tab4:
+        st.subheader("📂 Tabela crua: price_history")
+
+        import sqlite3
+        from data import WISHLIST_DB_PATH  # Ajuste se necessário
+
+        try:
+            conn = sqlite3.connect(WISHLIST_DB_PATH)
+            df_prices_raw = pd.read_sql_query("SELECT * FROM wishlist_prices", conn)
+            conn.close()
+            st.dataframe(df_prices_raw, width='stretch')
+        except Exception as e:
+            st.error(f"Erro ao carregar tabela price_history: {e}")
 
 def __create_wishlist_df(items):
     """Helper function to create a nice dataframe from wishlist items"""

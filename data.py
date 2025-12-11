@@ -3,98 +3,7 @@ import pandas as pd
 from pathlib import Path
 import datetime
 
-DB_PATH = Path(__file__).parent / "prices.db"
 WISHLIST_DB_PATH = Path(__file__).parent / "wishlist.db"
-
-def init_database():
-    """Initialize SQLite database with price data"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Create table if it doesn't exist
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS prices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            price REAL NOT NULL
-        )
-    ''')
-    
-    # Check if table is empty
-    cursor.execute('SELECT COUNT(*) FROM prices')
-    if cursor.fetchone()[0] == 0:
-        # Insert data
-        data = [
-            ("25/01/2024 16:00", 249.9),
-            ("24/06/2024 17:24", 199.92),
-            ("11/07/2024 17:34", 249.9),
-            ("12/09/2024 17:03", 199.92),
-            ("19/09/2024 17:03", 249.9),
-            ("27/11/2024 18:36", 167.43),
-            ("04/12/2024 18:34", 249.9),
-            ("19/12/2024 20:30", 167.43),
-            ("02/01/2025 19:01", 249.9),
-            ("13/03/2025 17:16", 167.43),
-            ("20/03/2025 18:01", 249.9),
-            ("23/06/2025 17:21", 149.94),
-            ("26/06/2025 19:57", 149.94),
-            ("10/07/2025 17:11", 249.9),
-            ("29/09/2025 17:08", 149.94),
-            ("06/10/2025 17:11", 249.9),
-            ("20/11/2025 18:01", 149.94),
-            ("02/12/2025 18:01", 249.9),
-            ("05/12/2025 16:09", 249.9),
-        ]
-        cursor.executemany('INSERT INTO prices (date, price) VALUES (?, ?)', data)
-        conn.commit()
-    
-    conn.close()
-
-def load_price_data():
-    """Load price data from SQLite database and return as DataFrame"""
-    init_database()
-    conn = sqlite3.connect(DB_PATH)
-    
-    df = pd.read_sql_query(
-        'SELECT date, price FROM prices ORDER BY date ASC',
-        conn
-    )
-    
-    conn.close()
-    
-    # Convert date column to datetime with correct format
-    df['date'] = pd.to_datetime(df['date'], format='%d/%m/%Y %H:%M')
-    
-    # Rename columns for consistency
-    df.columns = ['Date', 'Price']
-    
-    return df
-
-def add_price(date_str, price):
-    """Add a new price entry to the database"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('INSERT INTO prices (date, price) VALUES (?, ?)', (date_str, price))
-    conn.commit()
-    conn.close()
-
-def get_all_prices():
-    """Get all prices from database"""
-    return load_price_data()
-
-def view_raw_table():
-    """View raw data directly from the prices table"""
-    init_database()
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM prices')
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
-# ============================================
-# WISHLIST DATABASE FUNCTIONS (NORMALIZED)
-# ============================================
 
 def init_wishlist_database():
     """
@@ -172,7 +81,7 @@ def save_wishlist_to_db(wishlist_data):
     cursor = conn.cursor()
     
     # Data única para todo este fetch
-    fetch_date = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    fetch_date = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
     
     for item in wishlist_data:
         try:
