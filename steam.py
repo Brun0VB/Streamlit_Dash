@@ -228,7 +228,7 @@ def plot_wishlist_altair():
         .configure_title(color='white')
     )
 
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width='stretch')
 
 def viewWishlistDatabase():
     """View wishlist data from database"""
@@ -249,7 +249,7 @@ def viewWishlistDatabase():
             
             # Create a nice dataframe
             df_latest = __create_wishlist_df(latest['items'])
-            st.dataframe(df_latest, use_container_width=True)
+            st.dataframe(df_latest, width='stretch')
             
             # Show summary stats
             col1, col2, col3 = st.columns(3)
@@ -268,7 +268,7 @@ def viewWishlistDatabase():
         df_history = get_wishlist_history()
         if df_history is not None and len(df_history) > 0:
             st.write(f"**Total de registros:** {len(df_history)}")
-            st.dataframe(df_history, use_container_width=True)
+            st.dataframe(df_history, width='stretch')
             
             # Summary by fetch date
             st.subheader("Resumo por Data")
@@ -276,7 +276,7 @@ def viewWishlistDatabase():
                 'appid': 'count',
                 'price': lambda x: x[x.notna()].sum()
             }).rename(columns={'appid': 'Quantidade', 'price': 'Valor Total'})
-            st.dataframe(summary, use_container_width=True)
+            st.dataframe(summary, width='stretch')
             
             # Delete options by fetch_date
             st.subheader("🗑️ Deletar Dados por Data")
@@ -306,7 +306,7 @@ def viewWishlistDatabase():
             conn = sqlite3.connect(WISHLIST_DB_PATH)
             df_games_raw = pd.read_sql_query("SELECT * FROM wishlist_games", conn)
             conn.close()
-            st.dataframe(df_games_raw, use_container_width=True)
+            st.dataframe(df_games_raw, width='stretch')
         except Exception as e:
             st.error(f"Erro ao carregar tabela wishlist_games: {e}")
 
@@ -321,7 +321,7 @@ def viewWishlistDatabase():
             conn = sqlite3.connect(WISHLIST_DB_PATH)
             df_prices_raw = pd.read_sql_query("SELECT * FROM wishlist_prices", conn)
             conn.close()
-            st.dataframe(df_prices_raw, use_container_width=True)
+            st.dataframe(df_prices_raw, width='stretch')
         except Exception as e:
             st.error(f"Erro ao carregar tabela price_history: {e}")
 
