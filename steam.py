@@ -9,7 +9,20 @@ class steamclient:
         self.steamid = steamid
         self.webapikey = webapikey
 
-    def getAppDetails(self, appid):
+    def getAppName(self, appid):
+        """Fetch app details including name and price"""
+        appdetail = requests.get(f"https://store.steampowered.com/api/appdetails?appids={appid}&cc=br").json()
+        
+        if appdetail[str(appid)]["success"]:
+            data = appdetail[str(appid)].get("data")
+            name = data.get("name", "Unknown App")
+            
+            return {
+                "appid": appid,
+                "name": name,
+            }
+    
+    def getAppPrice(self, appid):
         """Fetch app details including name and price"""
         appdetail = requests.get(f"https://store.steampowered.com/api/appdetails?appids={appid}&cc=br").json()
         
@@ -42,18 +55,11 @@ class steamclient:
     def getSteamWishList(self):
         wishlist = requests.get(f"{self.BASE_URL}/IWishlistService/GetWishlist/v1/?key={self.webapikey}&steamid={self.steamid}").json()["response"]["items"]
         appids = [item["appid"] for item in wishlist]
-        appData = []
-        for appid in appids:
-            app_info = self.getAppDetails(appid)
-            appData.append({
-                "appid": app_info["appid"],
-                "name": app_info["name"]
-            })
         
-        return appData #retorna lista de app ids e nomes
+        return appids #retorna lista de app ids
     
     def getSteamAppPrice(self, appid):
-        app_info = self.getAppDetails(appid)
+        app_info = self.getAppPrice(appid)
         return {"price": app_info["price"], "currency": app_info["currency"]}
 
     

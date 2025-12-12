@@ -25,22 +25,37 @@ def showSteamWishList():
         if st.button("🔄 Buscar WishList", key="fetch_wishlist"):
 
             with st.spinner("Buscando itens da wishlist..."):
-                wishlist = steamclient_instance.getSteamWishList()
+                wishlist_ids = steamclient_instance.getSteamWishList()
 
-            total = len(wishlist)
+            total = len(wishlist_ids)
             progress = st.progress(0)
 
             # Como já vem nome e preço, só iteramos p/ mostrar progresso
             appData = []
-            for i, item in enumerate(wishlist, start=1):
-                appData.append(item)
+            for i, id in enumerate(wishlist_ids, start=1):
+                appData.append(steamclient_instance.getAppPrice(id))
                 progress.progress(int(i * 100 / total))
 
             # Save to database
             for item in appData:
-                save_wishlist_game(appData)
+                save_wishlist_game(item)
             st.success(f"✅ WishList atualizada com {len(appData)} jogos!")
             st.rerun()
+    with col2:
+        if st.button("load prices", key="load_prices"):
+            with st.spinner("Carregando preços atuais..."):
+                wishlist = get_latest_wishlist()
+                total = len(wishlist['items'])
+                progress = st.progress(0)
+
+                for i, item in enumerate(wishlist['items'], start=1):
+                    appid = item[0]
+                    price_info = steamclient_instance.getSteamAppPrice(appid)
+                    save_wishlist_game_price(price_info, appid)
+                    progress.progress(int(i * 100 / total))
+                
+                st.success(f"✅ Preços atualizados para {total} jogos!")
+                st.rerun()
     
 #     with col2:
 #         # Botão para buscar histórico de TODOS os jogos
@@ -161,8 +176,15 @@ def showSteamWishList():
 def plot_wishlist_altair():
     """Module-level: build and render Altair chart for wishlist price history"""
 
-    games_df = get_latest_wishlist()
+    games = get_latest_wishlist()
+    games_df = pd.DataFrame(games['items'])
+    print(games_df.head())
     st.dataframe(games_df, width='stretch')
+
+    games_with_prices = get_latest_wishlist_with_prices()
+    games_with_prices_df = pd.DataFrame(games_with_prices['items'])
+    st.dataframe(games_with_prices_df, width='stretch')
+
     # if df is None or df.empty:
     #     st.info("📉 Nenhum histórico de preços disponível para os jogos da wishlist.")
     #     return

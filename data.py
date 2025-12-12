@@ -55,23 +55,13 @@ def init_wishlist_database():
     conn.commit()
     conn.close()
 
-def save_wishlist_game(wishlist_game):
+def save_wishlist_game(wishlist_game:dict):
     """
-    MUDANÇA 2: Salvar dados nas duas tabelas de forma relacionada.
-    
-    Processo:
-    1. Gera uma data única para este fetch
-    2. Para cada jogo:
-       a) Insere na tabela wishlist_games
-       b) Recupera o ID gerado (game_id)
-       c) Insere o preço na wishlist_prices usando o game_id
-    
-    Isso mantém a integridade referencial entre as tabelas.
     """
     init_wishlist_database()
     conn = sqlite3.connect(WISHLIST_DB_PATH)
     cursor = conn.cursor()
-    
+
     try:
         # Passo 1: Inserir jogo na tabela principal
         cursor.execute('''
@@ -158,7 +148,7 @@ def get_latest_wishlist_with_prices():
                 p.price,
                 p.currency
             FROM wishlist_games g
-            INNER JOIN wishlist_prices p ON g.id = p.game_id
+            INNER JOIN wishlist_prices p ON g.appid = p.game_id
             ORDER BY g.name
         ''',)
         
