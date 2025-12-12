@@ -1,3 +1,0 @@
-from data import migrate_old_wishlist_data
-
-migrate_old_wishlist_data()
