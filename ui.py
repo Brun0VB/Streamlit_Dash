@@ -17,6 +17,7 @@ def showSteamWishList():
     st.write("Esta é a seção SteamData onde você pode gerenciar sua lista de espera do Steam.")     
 
     steamclient_instance = steamclient(STEAMID, WEBAPIKEY)
+    data_instance = WishlistDatabase()
 
     # Área de botões principais
     col1, col2 = st.columns(2)
@@ -38,20 +39,20 @@ def showSteamWishList():
 
             # Save to database
             for item in appData:
-                save_wishlist_game(item)
+                data_instance.save_wishlist_game(item)
             st.success(f"✅ WishList atualizada com {len(appData)} jogos!")
             st.rerun()
     with col2:
         if st.button("load prices", key="load_prices"):
             with st.spinner("Carregando preços atuais..."):
-                wishlist = get_latest_wishlist()
+                wishlist = data_instance.get_latest_wishlist()
                 total = len(wishlist['items'])
                 progress = st.progress(0)
 
                 for i, item in enumerate(wishlist['items'], start=1):
                     appid = item[0]
                     price_info = steamclient_instance.getSteamAppPrice(appid)
-                    save_wishlist_game_price(price_info, appid)
+                    data_instance.save_wishlist_game_price(price_info, appid)
                     progress.progress(int(i * 100 / total))
                 
                 st.success(f"✅ Preços atualizados para {total} jogos!")
@@ -176,12 +177,14 @@ def showSteamWishList():
 def plot_wishlist_altair():
     """Module-level: build and render Altair chart for wishlist price history"""
 
-    games = get_latest_wishlist()
+    data_instance = WishlistDatabase()
+
+    games = data_instance.get_latest_wishlist()
     games_df = pd.DataFrame(games['items'])
     print(games_df.head())
     st.dataframe(games_df, width='stretch')
 
-    games_with_prices = get_latest_wishlist_with_prices()
+    games_with_prices = data_instance.get_latest_wishlist_with_prices()
     games_with_prices_df = pd.DataFrame(games_with_prices['items'])
     st.dataframe(games_with_prices_df, width='stretch')
 
