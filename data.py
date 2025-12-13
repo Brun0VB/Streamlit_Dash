@@ -1,13 +1,13 @@
 import sqlite3
 import pandas as pd
 from pathlib import Path
-import datetime
+from datetime import datetime
 
 WISHLIST_DB_PATH = Path(__file__).parent / "wishlist.db"
 
 class WishlistDatabase:
 
-    def init_wishlist_database():
+    def init_wishlist_database(self):
         """
         MUDANÇA 1: Criar duas tabelas ao invés de uma.
         
@@ -40,7 +40,8 @@ class WishlistDatabase:
                 price REAL,
                 currency TEXT,
                 fetch_date TEXT NOT NULL,
-                FOREIGN KEY (game_id) REFERENCES wishlist_games(id) ON DELETE CASCADE
+                FOREIGN KEY (game_id) REFERENCES wishlist_games(appid) ON DELETE CASCADE
+                UNIQUE(game_id, fetch_date)
             )
         ''')
         
@@ -95,7 +96,7 @@ class WishlistDatabase:
         cursor = conn.cursor()
         
         # Data única para todo este fetch
-        fetch_date = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+        fetch_date = datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
         
         # Passo 3: Inserir preço relacionado ao jogo
         cursor.execute('''
@@ -111,13 +112,36 @@ class WishlistDatabase:
             conn = sqlite3.connect(WISHLIST_DB_PATH)
             cursor = conn.cursor()
             
-            # JOIN entre as tabelas para pegar dados completos
             cursor.execute('''
                 SELECT 
                 *
                 FROM wishlist_games g
                 ORDER BY g.name
             ''',)
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            return {
+                "items": rows
+            }
+        except Exception as e:
+            print(f"Erro ao buscar wishlist: {e}")
+            return None
+        
+    def get_prices_for_game(self,appid):
+        try:
+            conn = sqlite3.connect(WISHLIST_DB_PATH)
+            cursor = conn.cursor()
+            
+            # JOIN entre as tabelas para pegar dados completos
+            cursor.execute('''
+                SELECT 
+                *
+                FROM wishlist_prices 
+                WHERE game_id = ?
+                ORDER BY g.fetch_date DESC
+            ''', (appid))
             
             rows = cursor.fetchall()
             conn.close()
@@ -148,7 +172,8 @@ class WishlistDatabase:
                     g.appid,
                     g.name,
                     p.price,
-                    p.currency
+                    p.currency,
+                    p.fetch_date
                 FROM wishlist_games g
                 INNER JOIN wishlist_prices p ON g.appid = p.game_id
                 ORDER BY g.name
@@ -196,3 +221,52 @@ class WishlistDatabase:
         print(f"  Total de registros: {count}\n")
         
         conn.close()
+
+    def save_price_history_to_db(self, appid, price_history):
+        if not price_history:
+            return 0
+        
+        conn = sqlite3.connect(WISHLIST_DB_PATH)
+        cursor = conn.cursor()
+        
+        try:
+            # Começa transação
+            cursor.execute('BEGIN TRANSACTION')
+            
+            # 2. Processa todas as mudanças de preço
+            saved_count = 0
+            last_price = None
+            
+            # Ordena por timestamp
+            price_history.sort(key=lambda x: x["timestamp"])
+            
+            for entry in price_history:
+                # Pula se preço não mudou
+                if entry["price"] == last_price:
+                    continue
+                
+                last_price = entry["price"]
+                
+                # Converte timestamp
+                datetime = entry["timestamp"]
+                
+                # 3. INSERÇÃO ATÔMICA com OR IGNORE
+                cursor.execute('''
+                    INSERT OR IGNORE INTO wishlist_prices 
+                    (game_id, price, currency, fetch_date)
+                    VALUES (?, ?, ?, ?)
+                ''', (appid, entry["price"], entry["currency"], datetime))
+                
+                if cursor.rowcount > 0:
+                    saved_count += 1
+            
+            # Commit da transação
+            conn.commit()
+            return saved_count
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"Erro na transação: {e}")
+            return 0
+        finally:
+            conn.close()

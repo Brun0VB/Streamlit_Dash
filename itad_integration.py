@@ -5,10 +5,10 @@ from datetime import datetime, timedelta, timezone
 import sqlite3
 from pathlib import Path
 import time
+from data import *
 
 load_dotenv()
 ITAD_API_KEY = os.getenv("ITAD_API_KEY")
-WISHLIST_DB_PATH = Path(__file__).parent / "wishlist.db"
 
 class ITADClient:
     """Cliente para interagir com a ITAD API"""
@@ -51,231 +51,114 @@ class ITADClient:
             "id": game_id,
             "shops": 61,
             "country": "BR",
-            # "since": (datetime.now() - timedelta(days=30*months)).timestamp()
+            "since": (datetime.now() - timedelta(days=30*months)).strftime("%Y-%m-%dT%H:%M:%SZ")
         }
         
         try:
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
-            data = response.json()
+            #price history is a list of json, each json is a price entry
+            price_history = response.json()
             
-            return self._parse_history_response(data)
+            return self._parse_history_response(price_history)
         except Exception as e:
             print(f"Erro ao buscar histórico para game_id {game_id}: {e}")
             return []
     
-    def _parse_history_response(self, data):
+    def _parse_history_response(self, price_history):
         """
         Processa a resposta da API e extrai apenas mudanças de preço
         """
         price_changes = []
         
-        if not data or not isinstance(data, list) or len(data) == 0:
+        if not price_history or not isinstance(price_history, list) or len(price_history) == 0:
             return price_changes
-        
-        game_data = data
 
         # Processa histórico
-        for entry in game_data:
+        for entry in price_history:
         
             deal_info = entry.get("deal", {})
             
             price_changes.append({
-                "timestamp": entry.get("timestamp"),
+                "fetch_date": entry.get("timestamp"),
                 "price": deal_info.get("price", {}).get("amount", 0),
                 "currency": deal_info.get("price", {}).get("currency", "BRL"),
             })
         
         return price_changes
 
-def save_price_history_to_db(appid, name, price_history):
-    """
-    Salva histórico de preços na estrutura normalizada existente
-    Elimina duplicatas e mantém apenas mudanças reais de preço
-    """
-    if not price_history:
-        return 0
-    
-    conn = sqlite3.connect(WISHLIST_DB_PATH)
-    cursor = conn.cursor()
-    
-    # Ordena por data
-    price_history.sort(key=lambda x: x["timestamp"])
 
-    print(f"Salvando histórico para {name} ({appid}), {len(price_history)} entradas recebidas")
-    
-    # Remove duplicatas consecutivas (mesmo preço)
-    unique_changes = []
-    last_price = None
-    
-    for entry in price_history:
-        current_price = entry["price"]
-        if current_price != last_price:
-            unique_changes.append(entry)
-            last_price = current_price
-    
-    saved_count = 0
-    
-    for entry in unique_changes:
-        try:
-            # Converte timestamp para datetime
-            raw_ts = entry["timestamp"]
-
-            # Caso 1: Já é ISO8601 → converter diretamente
-            if isinstance(raw_ts, str) and "T" in raw_ts:
-                dt = datetime.fromisoformat(raw_ts)
-                dt = dt.astimezone(timezone.utc)             # Normaliza para UTC
-                fetch_date = dt.isoformat(timespec='seconds')
-
-            # Caso 2: É UNIX timestamp → converter
-            elif isinstance(raw_ts, (int, float)):
-                dt = datetime.fromtimestamp(raw_ts, tz=timezone.utc)
-                fetch_date = dt.isoformat(timespec='seconds')
-            
-            # Verifica se já existe este registro exato
-            cursor.execute('''
-                SELECT COUNT(*) FROM wishlist_games g
-                INNER JOIN wishlist_prices p ON g.id = p.game_id
-                WHERE g.appid = ? AND g.fetch_date = ?
-            ''', (appid, fetch_date))
-            
-            if cursor.fetchone()[0] > 0:
-                continue  # Já existe
-            
-            # Insere na tabela de jogos
-            cursor.execute('''
-                INSERT INTO wishlist_games (appid, name, fetch_date)
-                VALUES (?, ?, ?)
-            ''', (appid, name, fetch_date))
-            
-            game_id = cursor.lastrowid
-            
-            # Insere o preço relacionado
-            cursor.execute('''
-                INSERT INTO wishlist_prices (game_id, price, currency, fetch_date)
-                VALUES (?, ?, ?, ?)
-            ''', (game_id, entry["price"], "BRL", fetch_date))
-            
-            saved_count += 1
-            
-        except sqlite3.IntegrityError as e:
-            print(f"Erro ao inserir: {e}")
-            continue
-        except Exception as e:
-            print(f"Erro inesperado: {e}")
-            continue
-    
-    conn.commit()
-    conn.close()
-    
-    return saved_count
-
-
-def fetch_price_history_for_game(appid, name, client, months=12):
-    """
-    Busca e salva histórico de preços para um jogo específico
-    """
-    # Passo 1: Converter AppID para ITAD Game ID
-    game_id = client.get_game_id_from_appid(appid)
-    
-    if not game_id:
-        return {
-            "success": False,
-            "message": f"Jogo {name} não encontrado na ITAD",
-            "records": 0
-        }
-    
-
-
-    # Passo 2: Buscar histórico
-    price_history = client.get_price_history(game_id, months=months)
-    
-    if not price_history:
-        return {
-            "success": False,
-            "message": f"Nenhum histórico encontrado para {name} {game_id}",
-            "records": 0
-        }
-    
-    # Passo 3: Salvar no banco
-    saved_count = save_price_history_to_db(appid, name, price_history)
-    
-    return {
-        "success": True,
-        "message": f"✅ {saved_count} mudanças de preço salvas para {name}",
-        "records": saved_count
-    }
-
-
-def fetch_all_wishlist_history(wishlist_items, progress_callback=None, months=24):
-    """
-    Busca histórico de preços para todos os jogos da wishlist
-    
-    Args:
-        wishlist_items: Lista de tuplas (appid, name, price, currency)
-        progress_callback: Função callback para atualizar progresso
-        months: Número de meses de histórico para buscar
-    """
-    if not ITAD_API_KEY:
-        return {
-            "success": False,
-            "message": "Configure ITAD_API_KEY no arquivo .env"
-        }
-    
-    client = ITADClient(ITAD_API_KEY)
-    results = []
-    total = len(wishlist_items)
-    
-    for i, (appid, name, _, _) in enumerate(wishlist_items, 1):
-        result = fetch_price_history_for_game(appid, name, client, months)
-        results.append(result)
+    def fetch_price_history_for_game(self, appid, name, months=12):
+        """
+        Busca e salva histórico de preços para um jogo específico
+        """
+        # Passo 1: Converter AppID para ITAD Game ID
+        game_id = self.get_game_id_from_appid(appid)
         
-        # Callback de progresso
-        if progress_callback:
-            progress_callback(i, total, result)
+        if not game_id:
+            return {
+                "success": False,
+                "message": f"Jogo {name} não encontrado na ITAD",
+                "records": 0
+            }
+
+        # Passo 2: Buscar histórico
+        price_history = self.get_price_history(game_id, months=months)
         
-        # Rate limiting: aguarda 1 segundo entre requisições
-        if i < total:
-            time.sleep(1)
-    
-    successful = sum(1 for r in results if r["success"])
-    total_records = sum(r["records"] for r in results)
-    
-    return {
-        "success": True,
-        "message": f"Processados {successful}/{total} jogos, {total_records} registros salvos",
-        "results": results,
-        "total_records": total_records
-    }
-
-
-def get_price_stats_for_game(appid):
-    """
-    Retorna estatísticas de preço para um jogo
-    """
-    conn = sqlite3.connect(WISHLIST_DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT 
-            MIN(p.price) as min_price,
-            MAX(p.price) as max_price,
-            AVG(p.price) as avg_price,
-            COUNT(*) as num_changes
-        FROM wishlist_games g
-        INNER JOIN wishlist_prices p ON g.id = p.game_id
-        WHERE g.appid = ?
-    ''', (appid,))
-    
-    result = cursor.fetchone()
-    conn.close()
-    
-    if result and result[0] is not None:
+        if not price_history:
+            return {
+                "success": False,
+                "message": f"Nenhum histórico encontrado para {name} {game_id}",
+                "records": 0
+            }
+        
+        # Passo 3: Salvar no banco
+        wishllist_instance = WishlistDatabase()
+        saved_count = wishllist_instance.save_price_history_to_db(appid, price_history)
+        
         return {
-            "min_price": round(result[0], 2),
-            "max_price": round(result[1], 2),
-            "avg_price": round(result[2], 2),
-            "num_changes": result[3]
+            "success": True,
+            "message": f"✅ {saved_count} mudanças de preço salvas para {name}",
+            "records": saved_count
         }
-    
-    return None
+
+
+    def fetch_all_wishlist_history(self, wishlist_items, progress_callback=None, months=24):
+        """
+        Busca histórico de preços para todos os jogos da wishlist
+        
+        Args:
+            wishlist_items: Lista de tuplas (appid, name, price, currency)
+            progress_callback: Função callback para atualizar progresso
+            months: Número de meses de histórico para buscar
+        """
+        if not ITAD_API_KEY:
+            return {
+                "success": False,
+                "message": "Configure ITAD_API_KEY no arquivo .env"
+            }
+        
+        results = []
+        total = len(wishlist_items)
+        
+        for i, (appid, name, _, _) in enumerate(wishlist_items, 1):
+            result = self.fetch_price_history_for_game(appid, name, months)
+            results.append(result)
+            
+            # Callback de progresso
+            if progress_callback:
+                progress_callback(i, total, result)
+            
+            # Rate limiting: aguarda 1 segundo entre requisições
+            if i < total:
+                time.sleep(1)
+        
+        successful = sum(1 for r in results if r["success"])
+        total_records = sum(r["records"] for r in results)
+        
+        return {
+            "success": True,
+            "message": f"Processados {successful}/{total} jogos, {total_records} registros salvos",
+            "results": results,
+            "total_records": total_records
+        }

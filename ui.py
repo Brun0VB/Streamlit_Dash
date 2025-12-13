@@ -179,76 +179,71 @@ def plot_wishlist_altair():
 
     data_instance = WishlistDatabase()
 
-    games = data_instance.get_latest_wishlist()
-    games_df = pd.DataFrame(games['items'])
-    print(games_df.head())
-    st.dataframe(games_df, width='stretch')
-
     games_with_prices = data_instance.get_latest_wishlist_with_prices()
-    games_with_prices_df = pd.DataFrame(games_with_prices['items'])
-    st.dataframe(games_with_prices_df, width='stretch')
+    games_with_prices_df = pd.DataFrame(games_with_prices['items'], columns=['appid', 'name', 'price', 'currency', 'fetch_date'])
+    st.dataframe(games_with_prices_df)
 
-    # if df is None or df.empty:
-    #     st.info("📉 Nenhum histórico de preços disponível para os jogos da wishlist.")
-    #     return
+    if games_with_prices is None or games_with_prices_df.empty:
+        st.info("📉 Nenhum histórico de preços disponível para os jogos da wishlist.")
+        return
     
-    # df['fetch_date_dt'] = pd.to_datetime(df['fetch_date'], utc=True, errors='coerce')
+    games_with_prices_df['fetch_date_dt'] = pd.to_datetime(games_with_prices_df['fetch_date'], utc=True)
 
-    # # Get unique game names sorted
-    # game_names = sorted(df['name'].unique())
+    # Get unique game names sorted
+    game_names = sorted(games_with_prices_df['name'].unique())
     
-    # if not game_names:
-    #     st.info("📉 Nenhum preço disponível para plotagem na wishlist.")
-    #     return
+    if not game_names:
+        st.info("📉 Nenhum preço disponível para plotagem na wishlist.")
+        return
     
-    # # Add selectbox for user to choose a game
-    # st.subheader('📈 Histórico de Preços (WishList)')
-    # selected_game = st.selectbox("Selecione um jogo para visualizar:", game_names, key="wishlist_game_select")
+    # Add selectbox for user to choose a game
+    st.subheader('📈 Histórico de Preços (WishList)')
+    selected_game = st.selectbox("Selecione um jogo para visualizar:", game_names, key="wishlist_game_select")
     
-    # # Filter data for selected game
-    # game_data = df[df['name'] == selected_game].copy()
-    # game_data = game_data.dropna(subset=['price', 'fetch_date_dt'])
+    # Filter data for selected game
+    game_data = games_with_prices_df[games_with_prices_df['name'] == selected_game].copy()
+    game_data = game_data.dropna(subset=['price', 'fetch_date_dt'])
     
-    # if game_data.empty:
-    #     st.warning(f"⚠️ Nenhum preço disponível para {selected_game}.")
-    #     return
+    if game_data.empty:
+        st.warning(f"⚠️ Nenhum preço disponível para {selected_game}.")
+        return
     
-    # game_data['fetch_date_dt'] = pd.to_datetime(game_data['fetch_date_dt'], errors='coerce')
+    game_data['fetch_date_dt'] = pd.to_datetime(game_data['fetch_date_dt'], errors='coerce')
 
-    # # Create a nearest selection for hover interaction (like Highcharts)
-    # nearest = alt.selection_point(nearest=True, on='mouseover', fields=['fetch_date_dt'], empty='none')
+    # Create a nearest selection for hover interaction (like Highcharts)
+    nearest = alt.selection_point(nearest=True, on='mouseover', fields=['fetch_date_dt'], empty='none')
 
-    # # Build Altair chart with interactive hover
-    # line = (
-    #     alt.Chart(game_data)
-    #     .mark_line(interpolate='step-after', point=True, color='#66CCFF')
-    #     .encode(
-    #         x=alt.X('fetch_date_dt:T', axis=alt.Axis(format='%d/%b/%Y', labelAngle=-90, title='Data', tickCount={'interval': 'day', 'step': 1})),
-    #         y=alt.Y('price:Q', scale=alt.Scale(), title='Preço (R$)'),
-    #     )
-    # )
+    # Build Altair chart with interactive hover
+    line = (
+        alt.Chart(game_data)
+        .mark_line(interpolate='step-after', point=True, color='#66CCFF')
+        .encode(
+            x=alt.X('fetch_date_dt:T', axis=alt.Axis(format='%d/%b/%Y', labelAngle=-90, title='Data', tickCount={'interval': 'day', 'step': 1})),
+            y=alt.Y('price:Q', scale=alt.Scale(), title='Preço (R$)'),
+        )
+    )
 
-    # # Points that appear on hover
-    # points = (
-    #     alt.Chart(game_data)
-    #     .mark_circle(color="#8766FF", size=100)
-    #     .encode(
-    #         x='fetch_date_dt:T',
-    #         y='price:Q',
-    #         opacity=alt.condition(nearest, alt.value(1), alt.value(0))
-    #     )
-    #     .add_params(nearest)
-    # )
+    # Points that appear on hover
+    points = (
+        alt.Chart(game_data)
+        .mark_circle(color="#8766FF", size=100)
+        .encode(
+            x='fetch_date_dt:T',
+            y='price:Q',
+            opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+        )
+        .add_params(nearest)
+    )
 
-    # # Combine all layers
-    # chart = (
-    #     (line + points)
-    #     .properties(height=400, width=900, title=f'Histórico de Preços — {selected_game}')
-    #     .configure_axis(labelColor='white', titleColor='white')
-    #     .configure_title(color='white')
-    # )
+    # Combine all layers
+    chart = (
+        (line + points)
+        .properties(height=400, width=900, title=f'Histórico de Preços — {selected_game}')
+        .configure_axis(labelColor='white', titleColor='white')
+        .configure_title(color='white')
+    )
 
-    # st.altair_chart(chart, width='stretch')
+    st.altair_chart(chart, width='stretch')
 
 # def viewWishlistDatabase():
 #     """View wishlist data from database"""
