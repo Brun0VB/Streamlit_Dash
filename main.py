@@ -11,4 +11,4 @@ with tabs[0]:
 
 with tabs[1]:
     st.title("WishList")
-    # viewWishlistDatabase()
+    plot_wishlist_altair()
