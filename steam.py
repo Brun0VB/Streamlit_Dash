@@ -22,7 +22,7 @@ class steamclient:
                 "name": name,
             }
     
-    def getAppPrice(self, appid):
+    def getAppDetails(self, appid):
         """Fetch app details including name and price"""
         appdetail = requests.get(f"https://store.steampowered.com/api/appdetails?appids={appid}&cc=br").json()
         
@@ -31,8 +31,9 @@ class steamclient:
             name = data.get("name", "Unknown App")
             
             # Extract price from price_overview
-            price = None
-            currency = None
+            price = 0
+            currency = 'BRL'
+            
             if "price_overview" in data:
                 price_overview = data["price_overview"]
                 price = price_overview.get("final", 0) / 100  # Price is in cents
@@ -59,7 +60,7 @@ class steamclient:
         return appids #retorna lista de app ids
     
     def getSteamAppPrice(self, appid):
-        app_info = self.getAppPrice(appid)
+        app_info = self.getAppDetails(appid)
         return {"price": app_info["price"], "currency": app_info["currency"]}
 
     

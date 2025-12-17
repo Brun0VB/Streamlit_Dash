@@ -1,9 +1,19 @@
 import sqlite3
 import pandas as pd
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 WISHLIST_DB_PATH = Path(__file__).parent / "wishlist.db"
+
+#refactor connetions : not oppen in function, create a function to only be 
+# responsible for create a conn, the rest receive the conn as parameter 
+# use "with data_instance.get_connection() as conn" in the ui
+
+#refactor, better undestand where to put init function
+
+#refactor, not use for, use execute many
+
+#otimizations, build entire query before and us e just one insert
 
 class WishlistDatabase:
 
@@ -72,7 +82,28 @@ class WishlistDatabase:
                     VALUES (?, ?)
             ''', (wishlist_game["appid"], wishlist_game["name"]))
         except sqlite3.IntegrityError as e:
-            return  # Jogo já existe, pula
+            return 
+                
+        
+        conn.commit()
+        conn.close()
+
+    def save_wishlist_multiple_games(self, wishlist_games:list[dict]):
+        """
+        """
+        self.init_wishlist_database()
+        conn = sqlite3.connect(WISHLIST_DB_PATH)
+        cursor = conn.cursor()
+
+        try:
+            # Passo 1: Inserir jogo na tabela principal
+            for wishlist_game in wishlist_games:
+                cursor.execute('''
+                INSERT INTO wishlist_games (appid, name)
+                        VALUES (?, ?)
+                ''', (wishlist_game["appid"], wishlist_game["name"]))
+        except sqlite3.IntegrityError as e:
+            return 
                 
         
         conn.commit()
@@ -80,23 +111,13 @@ class WishlistDatabase:
 
     def save_wishlist_game_price(self, game_data, game_id):
         """
-        MUDANÇA 2: Salvar dados nas duas tabelas de forma relacionada.
-        
-        Processo:
-        1. Gera uma data única para este fetch
-        2. Para cada jogo:
-        a) Insere na tabela wishlist_games
-        b) Recupera o ID gerado (game_id)
-        c) Insere o preço na wishlist_prices usando o game_id
-        
-        Isso mantém a integridade referencial entre as tabelas.
         """
         self.init_wishlist_database()
         conn = sqlite3.connect(WISHLIST_DB_PATH)
         cursor = conn.cursor()
         
         # Data única para todo este fetch
-        fetch_date = datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+        fetch_date = datetime.now(timezone.utc).isoformat(timespec='seconds')
         
         # Passo 3: Inserir preço relacionado ao jogo
         cursor.execute('''
@@ -155,12 +176,6 @@ class WishlistDatabase:
 
     def get_latest_wishlist_with_prices(self):
         """
-        MUDANÇA 3: Fazer JOIN entre as duas tabelas para recuperar dados completos.
-        
-        O JOIN conecta:
-        - wishlist_games.id = wishlist_prices.game_id
-        
-        Isso retorna todas as colunas das duas tabelas unidas.
         """
         try:
             conn = sqlite3.connect(WISHLIST_DB_PATH)
@@ -190,7 +205,7 @@ class WishlistDatabase:
             return None
 
     # Função auxiliar para visualizar a estrutura
-    def show_database_structure():
+    def show_database_structure(self):
         """
         Mostra a estrutura das tabelas e exemplos de dados.
         Útil para entender como os dados estão organizados.
@@ -237,8 +252,8 @@ class WishlistDatabase:
             saved_count = 0
             last_price = None
             
-            # Ordena por timestamp
-            price_history.sort(key=lambda x: x["timestamp"])
+            # Ordena por fetch_date
+            price_history.sort(key=lambda x: x["fetch_date"])
             
             for entry in price_history:
                 # Pula se preço não mudou
@@ -247,8 +262,8 @@ class WishlistDatabase:
                 
                 last_price = entry["price"]
                 
-                # Converte timestamp
-                datetime = entry["timestamp"]
+                # Converte fetch_date
+                datetime = entry["fetch_date"]
                 
                 # 3. INSERÇÃO ATÔMICA com OR IGNORE
                 cursor.execute('''

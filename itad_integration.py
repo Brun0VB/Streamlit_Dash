@@ -111,7 +111,6 @@ class ITADClient:
                 "message": f"Nenhum histórico encontrado para {name} {game_id}",
                 "records": 0
             }
-        
         # Passo 3: Salvar no banco
         wishllist_instance = WishlistDatabase()
         saved_count = wishllist_instance.save_price_history_to_db(appid, price_history)
@@ -123,14 +122,8 @@ class ITADClient:
         }
 
 
-    def fetch_all_wishlist_history(self, wishlist_items, progress_callback=None, months=24):
+    def fetch_all_wishlist_history(self, wishlist_items, progress_callback=None, months=12):
         """
-        Busca histórico de preços para todos os jogos da wishlist
-        
-        Args:
-            wishlist_items: Lista de tuplas (appid, name, price, currency)
-            progress_callback: Função callback para atualizar progresso
-            months: Número de meses de histórico para buscar
         """
         if not ITAD_API_KEY:
             return {
@@ -141,7 +134,7 @@ class ITADClient:
         results = []
         total = len(wishlist_items)
         
-        for i, (appid, name, _, _) in enumerate(wishlist_items, 1):
+        for i, (appid, name) in enumerate(wishlist_items, 1):
             result = self.fetch_price_history_for_game(appid, name, months)
             results.append(result)
             
